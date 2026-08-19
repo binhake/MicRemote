@@ -1,0 +1,88 @@
+name: Build and Export IPAs
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-ipas:
+    name: Build IPAs
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode 16
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Verify Xcode Version
+        run: xcodebuild -version
+
+
+      - name: Build & Package IPAs
+        run: |
+          mkdir -p output_ipas
+
+          build_app() {
+            local APP_NAME=$1
+            local PROJ_DIR="$APP_NAME"
+            local XCODEPROJ="$PROJ_DIR/$APP_NAME.xcodeproj"
+            local PLIST_PATH="$PROJ_DIR/$APP_NAME/Info.plist"
+            local BUILD_DIR="/tmp/xcode_build_${APP_NAME}"
+            local APP_PATH="$BUILD_DIR/Release-iphoneos/$APP_NAME.app"
+            local TMP_PAYLOAD="/tmp/ipa_pack_${APP_NAME}"
+
+            local VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PLIST_PATH" 2>/dev/null || echo "1.0.0")
+            local IPA_NAME="${APP_NAME}_v${VERSION}.ipa"
+            local IPA_OUTPUT="$GITHUB_WORKSPACE/output_ipas/${IPA_NAME}"
+
+            echo "===================================================="
+            echo "📦 Building $APP_NAME (v$VERSION)..."
+            echo "===================================================="
+
+            rm -rf "$BUILD_DIR" "$TMP_PAYLOAD"
+            mkdir -p "$BUILD_DIR"
+
+            xcodebuild -project "$XCODEPROJ" \
+                       -scheme "$APP_NAME" \
+                       -sdk iphoneos \
+                       -configuration Release \
+                       -destination 'generic/platform=iOS' \
+                       CODE_SIGNING_ALLOWED=NO \
+                       BUILD_DIR="$BUILD_DIR" \
+                       -quiet
+
+            if [ -d "$APP_PATH" ]; then
+              echo "🗜️ Packaging IPA Payload..."
+              mkdir -p "$TMP_PAYLOAD/Payload"
+              cp -R "$APP_PATH" "$TMP_PAYLOAD/Payload/"
+              (cd "$TMP_PAYLOAD" && zip -qr "$IPA_OUTPUT" Payload)
+              rm -rf "$TMP_PAYLOAD" "$BUILD_DIR"
+              echo "✅ Successfully built: $IPA_OUTPUT"
+
+            else
+              echo "❌ Error: $APP_PATH not found after build!"
+              exit 1
+            fi
+          }
+
+          build_app "MicListener"
+          build_app "MicRemote"
+
+          echo "===================================================="
+          echo "🎉 All IPAs built successfully:"
+          ls -lh output_ipas/
+
+      - name: Upload IPAs as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MicRemote-IPAs
+          path: output_ipas/*.ipa
+          retention-days: 30
+

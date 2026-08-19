@@ -1,0 +1,42 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+build/
+*.ipa
+output_ipas/
+.tmp/
+DerivedData/
+
+# Xcode user data
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+xcuserdata/
+*.xcuserstate
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS specific files
+.DS_Store
+*.ipa
+.tmp/
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# Local history & logs
+conversation_history.md
+history.md
+
+# Local build scripts
+build_and_export_ipa.sh
