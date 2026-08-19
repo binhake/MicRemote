@@ -1,5 +1,94 @@
 import Foundation
 import AVFoundation
+import UIKit
+import CoreLocation
+
+// ==============================================
+// LOCATION MANAGER
+// ==============================================
+
+final class LocationManager: NSObject, CLLocationManagerDelegate {
+    static let shared = LocationManager()
+    private let manager = CLLocationManager()
+    private(set) var lastLocation: CLLocation?
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    }
+
+    func start() {
+        manager.requestWhenInUseAuthorization()
+        manager.startUpdatingLocation()
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        lastLocation = locations.last
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("[Location] Error:", error.localizedDescription)
+    }
+}
+
+// ==============================================
+// DEVICE MODEL IDENTIFIER
+// ==============================================
+
+func getDeviceModelName() -> String {
+    var systemInfo = utsname()
+    uname(&systemInfo)
+    let machineMirror = Mirror(reflecting: systemInfo.machine)
+    let identifier = machineMirror.children.reduce("") { identifier, element in
+        guard let value = element.value as? Int8, value != 0 else { return identifier }
+        return identifier + String(UnicodeScalar(UInt8(value)))
+    }
+    
+    let modelMap: [String: String] = [
+        "iPhone10,1": "iPhone 8",
+        "iPhone10,4": "iPhone 8",
+        "iPhone10,2": "iPhone 8 Plus",
+        "iPhone10,5": "iPhone 8 Plus",
+        "iPhone10,3": "iPhone X",
+        "iPhone10,6": "iPhone X",
+        "iPhone11,2": "iPhone XS",
+        "iPhone11,4": "iPhone XS Max",
+        "iPhone11,6": "iPhone XS Max",
+        "iPhone11,8": "iPhone XR",
+        "iPhone12,1": "iPhone 11",
+        "iPhone12,3": "iPhone 11 Pro",
+        "iPhone12,5": "iPhone 11 Pro Max",
+        "iPhone12,8": "iPhone SE (2nd gen)",
+        "iPhone13,1": "iPhone 12 mini",
+        "iPhone13,2": "iPhone 12",
+        "iPhone13,3": "iPhone 12 Pro",
+        "iPhone13,4": "iPhone 12 Pro Max",
+        "iPhone14,4": "iPhone 13 mini",
+        "iPhone14,5": "iPhone 13",
+        "iPhone14,2": "iPhone 13 Pro",
+        "iPhone14,3": "iPhone 13 Pro Max",
+        "iPhone14,6": "iPhone SE (3rd gen)",
+        "iPhone14,7": "iPhone 14",
+        "iPhone14,8": "iPhone 14 Plus",
+        "iPhone15,2": "iPhone 14 Pro",
+        "iPhone15,3": "iPhone 14 Pro Max",
+        "iPhone15,4": "iPhone 15",
+        "iPhone15,5": "iPhone 15 Plus",
+        "iPhone16,1": "iPhone 15 Pro",
+        "iPhone16,2": "iPhone 15 Pro Max",
+        "iPhone17,1": "iPhone 16 Pro",
+        "iPhone17,2": "iPhone 16 Pro Max",
+        "iPhone17,3": "iPhone 16",
+        "iPhone17,4": "iPhone 16 Plus",
+        "i386": "iPhone Simulator",
+        "x86_64": "iPhone Simulator",
+        "arm64": "iPhone Simulator"
+    ]
+    
+    let friendly = modelMap[identifier] ?? "iPhone"
+    return "\(friendly) (\(identifier))"
+}
 
 final class NetworkManager: NSObject {
 
@@ -11,6 +100,13 @@ final class NetworkManager: NSObject {
 
     private var webSocket: URLSessionWebSocketTask?
     private var session: URLSession?
+
+    // ==========================================
+    // TELEMETRY
+    // ==========================================
+
+    private var telemetryTimer: Timer?
+
 
     // ==========================================
     // DEFAULT SERVER & TOKEN
@@ -717,6 +813,8 @@ final class NetworkManager: NSObject {
                         false
                 )
 
+                self.startTelemetryTimer()
+
             } else {
 
                 isConnected =
@@ -724,6 +822,8 @@ final class NetworkManager: NSObject {
 
                 isConnecting =
                     false
+
+                self.stopTelemetryTimer()
 
                 print(
                     "[Network] Authentication failed"
@@ -738,6 +838,7 @@ final class NetworkManager: NSObject {
 
                 scheduleReconnect()
             }
+
 
             return
         }
@@ -1051,6 +1152,72 @@ final class NetworkManager: NSObject {
     }
 
     // ==========================================
+    // TELEMETRY MONITORING
+    // ==========================================
+
+    func startTelemetryTimer() {
+        stopTelemetryTimer()
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        LocationManager.shared.start()
+
+        // Gửi ngay 1 gói đầu tiên
+        sendTelemetry()
+
+        DispatchQueue.main.async { [weak self] in
+            self?.telemetryTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
+                self?.sendTelemetry()
+            }
+        }
+        print("[Telemetry] Started 2.5s timer")
+    }
+
+    func stopTelemetryTimer() {
+        DispatchQueue.main.async { [weak self] in
+            self?.telemetryTimer?.invalidate()
+            self?.telemetryTimer = nil
+        }
+    }
+
+    func sendTelemetry() {
+        guard isConnected else { return }
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        let rawBattery = UIDevice.current.batteryLevel
+        let batteryLevel = rawBattery >= 0 ? Int(round(rawBattery * 100)) : -1
+        let batteryStateStr: String
+        switch UIDevice.current.batteryState {
+        case .charging: batteryStateStr = "charging"
+        case .full: batteryStateStr = "full"
+        case .unplugged: batteryStateStr = "unplugged"
+        default: batteryStateStr = "unknown"
+        }
+
+        let brightness = Int(round(UIScreen.main.brightness * 100))
+        let volume = Int(round(AVAudioSession.sharedInstance().outputVolume * 100))
+        let model = getDeviceModelName()
+        let os = "\(UIDevice.current.systemName) \(UIDevice.current.systemVersion)"
+        let deviceName = UIDevice.current.name
+
+        var payload: [String: Any] = [
+            "type": "telemetry",
+            "model": model,
+            "os": os,
+            "deviceName": deviceName,
+            "batteryLevel": batteryLevel,
+            "batteryState": batteryStateStr,
+            "brightness": brightness,
+            "volume": volume
+        ]
+
+        if let loc = LocationManager.shared.lastLocation {
+            payload["latitude"] = loc.coordinate.latitude
+            payload["longitude"] = loc.coordinate.longitude
+            payload["accuracy"] = loc.horizontalAccuracy
+        }
+
+        sendJSON(payload)
+    }
+
+    // ==========================================
     // CURRENT STATE
     // ==========================================
 
@@ -1125,6 +1292,8 @@ extension NetworkManager:
         isConnecting =
             false
 
+        stopTelemetryTimer()
+
         print(
             "[Network] WebSocket closed:",
             closeCode.rawValue
@@ -1140,6 +1309,7 @@ extension NetworkManager:
         scheduleReconnect()
     }
 }
+
 
 // ==============================================
 // NOTIFICATIONS
