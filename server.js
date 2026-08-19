@@ -1048,19 +1048,6 @@ app.get(
             background:
                 #d33;
 
-            color:
-                white;
-        }
-
-        audio {
-
-            width:
-                100%;
-
-            margin-top:
-                25px;
-        }
-
         .info {
 
             margin-top:
@@ -1119,6 +1106,17 @@ app.get(
         </div>
     </div>
 
+    <!-- VU METER -->
+    <div id="vuCard" style="background:#181818; border:1px solid #333; border-radius:12px; padding:12px 14px; margin:14px 0; text-align:left;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:12px; color:#aaa;">
+            <span>📶 Tín hiệu Mic (VU Meter):</span>
+            <span id="vuLevelText" style="font-family:monospace; color:#4ade80; font-weight:bold;">0.000</span>
+        </div>
+        <div style="background:#262626; border-radius:6px; height:12px; overflow:hidden; position:relative;">
+            <div id="vuMeterBar" style="width:0%; height:100%; background:#22c55e; transition: width 0.08s ease-out, background-color 0.08s ease-out; border-radius:6px;"></div>
+        </div>
+    </div>
+
     <div style="margin: 15px 0 10px 0; display: flex; gap: 8px; justify-content: center; align-items: center;">
         <input
             type="password"
@@ -1162,14 +1160,10 @@ app.get(
         </button>
     </div>
 
-    <audio
-        id="audio"
-        controls
-    ></audio>
-
     <div class="info">
         MIC REMOTE SERVER v1.1.0
     </div>
+
 
 </div>
 
@@ -1227,6 +1221,31 @@ const devCharging = document.getElementById("devCharging");
 const devLocationRow = document.getElementById("devLocationRow");
 const devCoords = document.getElementById("devCoords");
 const devMapLink = document.getElementById("devMapLink");
+
+const vuLevelText = document.getElementById("vuLevelText");
+const vuMeterBar = document.getElementById("vuMeterBar");
+
+function updateVUMeter(level) {
+    if (!vuLevelText || !vuMeterBar) return;
+    vuLevelText.textContent = level.toFixed(3);
+    const percent = Math.min(100, Math.max(0, level * 300));
+    vuMeterBar.style.width = percent + "%";
+    if (level > 0.5) {
+        vuMeterBar.style.backgroundColor = "#ef4444";
+        vuLevelText.style.color = "#f87171";
+    } else if (level > 0.2) {
+        vuMeterBar.style.backgroundColor = "#f97316";
+        vuLevelText.style.color = "#fb923c";
+    } else {
+        vuMeterBar.style.backgroundColor = "#22c55e";
+        vuLevelText.style.color = "#4ade80";
+    }
+}
+
+function resetVUMeter() {
+    updateVUMeter(0);
+}
+
 
 // ============================================================
 // TELEMETRY UI UPDATE
@@ -1506,10 +1525,21 @@ async function handleWsMessage(event) {
         downloadAudioBtn.style.background = "#2563eb";
         downloadAudioBtn.textContent = "📥 Tải gói âm thanh đã nhận (" + mb + " MB)";
 
+        // Tính toán tín hiệu VU Meter RMS
+        const pcm16 = new Int16Array(event.data);
+        let sumSquares = 0;
+        for (let i = 0; i < pcm16.length; i++) {
+            const norm = pcm16[i] / 32768.0;
+            sumSquares += norm * norm;
+        }
+        const rms = pcm16.length > 0 ? Math.sqrt(sumSquares / pcm16.length) : 0;
+        updateVUMeter(rms);
+
         // CHỈ PHÁT RA LOA KHI NGƯỜI DÙNG BẬT NÚT LISTEN TRÊN TRÌNH DUYỆT
         if (!isListening) {
             return;
         }
+
 
         if (!audioContext) {
 
@@ -1635,8 +1665,10 @@ async function handleWsMessage(event) {
 
         if (message.type === "telemetry_reset") {
             updateTelemetryUI(null);
+            resetVUMeter();
             return;
         }
+
 
         // ====================================================
         // AUTH RESULT
@@ -1882,8 +1914,11 @@ stopButton.onclick =
         isListening =
             false;
 
+        resetVUMeter();
+
         stopButton.disabled =
             true;
+
 
         if (
             audioContext
