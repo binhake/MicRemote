@@ -82,11 +82,22 @@ struct ContentView: View {
                             .font(.title)
                             .bold()
 
-                        Text("Made with ❤️ by Binhake ツ")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                        HStack(spacing: 4) {
+                            Text("Made with ❤️ by")
+                                .foregroundColor(.secondary)
+                            if let searchURL = URL(string: "https://www.google.com/search?q=binhake&ie=UTF-8") {
+                                Link("Binhake ツ", destination: searchURL)
+                                    .foregroundColor(.blue)
+                                    .underline()
+                            } else {
+                                Text("Binhake ツ")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .font(.subheadline)
                     }
                     .padding(.top, 10)
+
 
                     // =================================================
                     // 2. STATUS SUMMARY
