@@ -1506,8 +1506,14 @@ async function handleWsMessage(event) {
         downloadAudioBtn.style.background = "#2563eb";
         downloadAudioBtn.textContent = "📥 Tải gói âm thanh đã nhận (" + mb + " MB)";
 
+        // CHỈ PHÁT RA LOA KHI NGƯỜI DÙNG BẬT NÚT LISTEN TRÊN TRÌNH DUYỆT
+        if (!isListening) {
+            return;
+        }
 
         if (!audioContext) {
+
+
 
             return;
         }

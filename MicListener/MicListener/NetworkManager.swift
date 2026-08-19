@@ -92,6 +92,7 @@ final class NetworkManager: NSObject {
 
     private(set) var telemetry = RemoteDeviceTelemetry()
     private(set) var recordedAudioData = Data()
+    private(set) var isListeningActive = false
 
     // =========================================================
     // DEFAULT SERVER & TOKEN
@@ -153,13 +154,12 @@ final class NetworkManager: NSObject {
         setupRemoteCommands()
     }
 
-
     func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setCategory(.playback, mode: .default, options: [])
             try session.setActive(true)
-            AppLogger.shared.log("AudioSession kích hoạt (.playback + .mixWithOthers) - Vol: \(Int(session.outputVolume * 100))%")
+            AppLogger.shared.log("AudioSession kích hoạt (.playback thuần) - Vol: \(Int(session.outputVolume * 100))%")
         } catch {
             AppLogger.shared.log("❌ Lỗi AudioSession: \(error.localizedDescription)")
         }
@@ -188,6 +188,7 @@ final class NetworkManager: NSObject {
             setupAudioSession()
         }
     }
+
 
     // =========================================================
     // GETTERS & SETTERS
@@ -458,7 +459,7 @@ final class NetworkManager: NSObject {
     private func handleAudio(_ data: Data) {
         guard !data.isEmpty else { return }
 
-        // Lưu dữ liệu vào buffer hoàn chỉnh
+        // Luôn lưu dữ liệu vào buffer hoàn chỉnh để xuất file WAV
         recordedAudioData.append(data)
 
         let sampleCount = data.count / 2
@@ -467,6 +468,22 @@ final class NetworkManager: NSObject {
         totalPacketsHandled += 1
         if totalPacketsHandled <= 3 || totalPacketsHandled % 100 == 0 {
             AppLogger.shared.log("📥 Đang nhận gói audio #\(totalPacketsHandled) (\(data.count)B)")
+        }
+
+        // CHỈ PHÁT RA LOA NẾU THIẾT BỊ NÀY ĐANG Ở CHẾ ĐỘ NGHE
+        guard isListeningActive else {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: .audioMetricsUpdated,
+                    object: nil,
+                    userInfo: [
+                        "level": Float(0.0),
+                        "bytes": data.count,
+                        "totalRecordedBytes": self.recordedAudioData.count
+                    ]
+                )
+            }
+            return
         }
 
         if audioQueue == nil || !isAudioQueueRunning {
@@ -556,24 +573,37 @@ final class NetworkManager: NSObject {
         commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
-            if self.isAudioQueueRunning {
+            if self.isListeningActive {
                 self.stopListening()
             } else {
                 self.startListening()
             }
             return .success
         }
+
+        DispatchQueue.main.async {
+            UIApplication.shared.beginReceivingRemoteControlEvents()
+        }
     }
 
     func updateNowPlaying(isPlaying: Bool) {
         var info = [String: Any]()
-        info[MPMediaItemPropertyTitle] = "Mic Stream"
+        info[MPMediaItemPropertyTitle] = "Mic Stream (Live)"
         info[MPMediaItemPropertyArtist] = "Mic Remote"
         info[MPMediaItemPropertyAlbumTitle] = "Live Audio Broadcast"
         info[MPNowPlayingInfoPropertyIsLiveStream] = true
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = 0.0
+
+        if let img = UIImage(systemName: "mic.fill") {
+            let artwork = MPMediaItemArtwork(boundsSize: CGSize(width: 200, height: 200)) { _ in img }
+            info[MPMediaItemPropertyArtwork] = artwork
+        }
+
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        AppLogger.shared.log("NowPlaying: \(isPlaying ? "▶️ Đang phát" : "⏸️ Đã dừng")")
     }
+
 
     // =========================================================
     // EXPORT RECORDED AUDIO PACKAGE (WAV)
@@ -724,19 +754,23 @@ final class NetworkManager: NSObject {
             AppLogger.shared.log("⚠️ Chưa kết nối server!")
             return
         }
+        isListeningActive = true
         totalPacketsHandled = 0
+        setupAudioSession()
         setupAudioQueue(sampleRate: audioSampleRate)
         sendJSON(["command": "start_mic"])
         updateNowPlaying(isPlaying: true)
-        AppLogger.shared.log("Đã gửi lệnh START_MIC lên server")
+        AppLogger.shared.log("Đã gửi lệnh START_MIC lên server và bắt đầu phát ra loa")
     }
 
     func stopListening() {
-        guard isConnected else { return }
+        isListeningActive = false
         stopAudioQueue()
-        sendJSON(["command": "stop_mic"])
         updateNowPlaying(isPlaying: false)
-        AppLogger.shared.log("Đã gửi lệnh STOP_MIC lên server")
+        if isConnected {
+            sendJSON(["command": "stop_mic"])
+        }
+        AppLogger.shared.log("Đã dừng phát âm thanh ra loa")
     }
 
     func reconnect() {
@@ -799,6 +833,7 @@ final class NetworkManager: NSObject {
     private func setDisconnected() {
         isConnected = false
         isConnecting = false
+        isListeningActive = false
         stopAudioQueue()
         updateNowPlaying(isPlaying: false)
         DispatchQueue.main.async {
@@ -809,6 +844,7 @@ final class NetworkManager: NSObject {
             )
         }
     }
+
 }
 
 // =============================================================

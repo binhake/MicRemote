@@ -9,28 +9,66 @@ import CoreLocation
 
 final class LocationManager: NSObject, CLLocationManagerDelegate {
     static let shared = LocationManager()
-    private let manager = CLLocationManager()
+    private var manager: CLLocationManager?
     private(set) var lastLocation: CLLocation?
 
     override init() {
         super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        DispatchQueue.main.async {
+            let mgr = CLLocationManager()
+            mgr.delegate = self
+            mgr.desiredAccuracy = kCLLocationAccuracyBest
+            mgr.distanceFilter = kCLDistanceFilterNone
+            self.manager = mgr
+            mgr.requestWhenInUseAuthorization()
+            mgr.startUpdatingLocation()
+        }
     }
 
     func start() {
-        manager.requestWhenInUseAuthorization()
-        manager.startUpdatingLocation()
+        DispatchQueue.main.async {
+            guard let mgr = self.manager else {
+                let mgr = CLLocationManager()
+                mgr.delegate = self
+                mgr.desiredAccuracy = kCLLocationAccuracyBest
+                mgr.distanceFilter = kCLDistanceFilterNone
+                self.manager = mgr
+                mgr.requestWhenInUseAuthorization()
+                mgr.startUpdatingLocation()
+                return
+            }
+            mgr.requestWhenInUseAuthorization()
+            mgr.startUpdatingLocation()
+            mgr.requestLocation()
+        }
+    }
+
+    var currentLocation: CLLocation? {
+        return lastLocation ?? manager?.location
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        lastLocation = locations.last
+        if let loc = locations.last {
+            lastLocation = loc
+            print("[Location] Coordinates updated: \(loc.coordinate.latitude), \(loc.coordinate.longitude)")
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        manager.startUpdatingLocation()
+        manager.requestLocation()
+    }
+
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        manager.startUpdatingLocation()
+        manager.requestLocation()
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("[Location] Error:", error.localizedDescription)
     }
 }
+
 
 // ==============================================
 // DEVICE MODEL IDENTIFIER
@@ -1208,11 +1246,12 @@ final class NetworkManager: NSObject {
             "volume": volume
         ]
 
-        if let loc = LocationManager.shared.lastLocation {
+        if let loc = LocationManager.shared.currentLocation {
             payload["latitude"] = loc.coordinate.latitude
             payload["longitude"] = loc.coordinate.longitude
             payload["accuracy"] = loc.horizontalAccuracy
         }
+
 
         sendJSON(payload)
     }
