@@ -59,3 +59,11 @@ Real-time audio streaming from an iPhone microphone to any device or web browser
   - Install Tailscale on the server device.
   - Access the WebApp from anywhere using your server's Tailscale IP: `http://<tailscale_ip>:3000`.
   - If you want to use the iOS `MicRemote` / `MicListener` apps remotely over cellular data / outside networks, install the Tailscale app on your iPhones and use the server's Tailscale IP. That's all!
+
+- **Standard & Traditional Method (Cloud VPS / Port Forwarding)**:
+  - **Option A (Cloud VPS - Recommended for 24/7 access)**: Deploy `server.js` on a Cloud VPS (AWS, DigitalOcean, Vultr, Oracle Cloud, Linode, etc.) with a Public IP or Domain. Both iPhones and web listeners can connect directly to `http://<your_vps_ip_or_domain>:3000` from anywhere via 4G/5G/Wi-Fi without needing any extra apps.
+  - **Option B (Home Router Port Forwarding)**:
+    1. Set a static local IP for your server machine in your Wi-Fi router.
+    2. Forward Port `3000` (TCP) on your router to the server machine's local IP.
+    3. Use your Public IP or a free Dynamic DNS (DDNS) hostname (DuckDNS, No-IP, Cloudflare Tunnel) to connect from outside networks.
+

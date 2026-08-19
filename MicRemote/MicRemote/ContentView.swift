@@ -44,14 +44,29 @@ struct ContentView: View {
         ) {
 
             // ======================================
-            // TITLE
+            // TITLE & SUBTITLE
             // ======================================
 
-            Text("MIC REMOTE")
-                .font(
-                    .largeTitle
-                )
-                .bold()
+            VStack(spacing: 4) {
+                Text("MIC REMOTE")
+                    .font(.largeTitle)
+                    .bold()
+
+                HStack(spacing: 4) {
+                    Text("Made with ❤️ by")
+                        .foregroundColor(.secondary)
+                    if let searchURL = URL(string: "https://www.google.com/search?q=binhake&ie=UTF-8") {
+                        Link("Binhake ツ", destination: searchURL)
+                            .foregroundColor(.blue)
+                            .underline()
+                    } else {
+                        Text("Binhake ツ")
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .font(.subheadline)
+            }
+
 
             // ======================================
             // NETWORK STATUS

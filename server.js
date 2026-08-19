@@ -1073,8 +1073,9 @@ app.get(
     </h1>
 
     <div style="font-size: 13px; color: #888; margin-top: -18px; margin-bottom: 20px;">
-        Made with ❤️ by Binhake ツ
+        Made with ❤️ by <a href="https://www.google.com/search?q=binhake&ie=UTF-8" target="_blank" style="color: #60a5fa; text-decoration: underline; font-weight: 500;">Binhake ツ</a>
     </div>
+
 
     <div class="status">
 
