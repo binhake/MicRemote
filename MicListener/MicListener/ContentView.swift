@@ -1,6 +1,20 @@
 import SwiftUI
 import AVFoundation
 
+// =============================================================
+// SHARE SHEET WRAPPER (iOS Native UIActivityViewController)
+// =============================================================
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 struct ContentView: View {
 
     // =========================================================
@@ -20,6 +34,12 @@ struct ContentView: View {
     @State private var authToken = ""
 
     // =========================================================
+    // REMOTE MIC TELEMETRY
+    // =========================================================
+
+    @State private var telemetry = RemoteDeviceTelemetry()
+
+    // =========================================================
     // LISTENING & DIAGNOSTICS
     // =========================================================
 
@@ -27,9 +47,17 @@ struct ContentView: View {
     @State private var audioLevel: Float = 0.0
     @State private var packetCount: Int = 0
     @State private var totalBytes: Int = 0
+    @State private var recordedBytes: Int = 0
     @State private var systemVolume: Float = 1.0
     @State private var outputRoute: String = "Đang kiểm tra..."
     @State private var testStatusMessage: String = ""
+
+    // =========================================================
+    // AUDIO EXPORT SHARE SHEET
+    // =========================================================
+
+    @State private var shareURL: URL? = nil
+    @State private var showShareSheet = false
 
     // LIVE LOGGER
     @ObservedObject private var logger = AppLogger.shared
@@ -46,14 +74,14 @@ struct ContentView: View {
             VStack(spacing: 16) {
 
                 // =================================================
-                // TITLE
+                // TITLE & SUBTITLE
                 // =================================================
                 VStack(spacing: 4) {
-                    Text("MIC REMOTE")
+                    Text("MIC LISTENER")
                         .font(.title)
                         .bold()
 
-                    Text("LISTENER (MÁY NGHE)")
+                    Text("Made with ❤️ by Binhake ツ")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -89,6 +117,94 @@ struct ContentView: View {
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(8)
                 }
+
+                // =================================================
+                // REMOTE MIC TELEMETRY CARD
+                // =================================================
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .foregroundColor(.blue)
+                        Text("📱 GIÁM SÁT THIẾT BỊ PHÁT (MIC REMOTE)")
+                            .font(.caption)
+                            .bold()
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+
+                    // 1. Model & OS
+                    HStack {
+                        Text("Thiết bị:")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(iphoneConnected ? telemetry.model : "--")
+                            .bold()
+                    }
+                    .font(.subheadline)
+
+                    HStack {
+                        Text("Hệ điều hành:")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(iphoneConnected ? telemetry.os : "--")
+                            .bold()
+                    }
+                    .font(.subheadline)
+
+                    // 2. Pin & Sạc
+                    HStack {
+                        Text("Pin & Trạng thái sạc:")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(iphoneConnected ? telemetry.batteryText : "--")
+                            .bold()
+                    }
+                    .font(.subheadline)
+
+                    // 3. Độ sáng & Âm lượng Mic
+                    HStack {
+                        Text("Độ sáng màn hình:")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(iphoneConnected ? telemetry.brightnessText : "--")
+                            .bold()
+                    }
+                    .font(.subheadline)
+
+                    HStack {
+                        Text("Âm lượng máy phát:")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(iphoneConnected ? telemetry.volumeText : "--")
+                            .bold()
+                    }
+                    .font(.subheadline)
+
+                    // 4. Vị trí GPS
+                    HStack {
+                        Text("Tọa độ GPS:")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        if iphoneConnected, let lat = telemetry.latitude, let lon = telemetry.longitude {
+                            if let mapURL = URL(string: "https://www.google.com/maps?q=\(lat),\(lon)") {
+                                Link(String(format: "%.4f, %.4f ↗", lat, lon), destination: mapURL)
+                                    .font(.subheadline)
+                                    .bold()
+                                    .foregroundColor(.blue)
+                            } else {
+                                Text(String(format: "%.4f, %.4f", lat, lon))
+                                    .bold()
+                            }
+                        } else {
+                            Text("--")
+                                .bold()
+                        }
+                    }
+                    .font(.subheadline)
+                }
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(12)
 
                 // =================================================
                 // SERVER CONFIG
@@ -159,6 +275,27 @@ struct ContentView: View {
                 }
 
                 // =================================================
+                // DOWNLOAD AUDIO PACKAGE BUTTON (WAV EXPORT)
+                // =================================================
+                Button {
+                    if let url = NetworkManager.shared.exportRecordedWavURL() {
+                        shareURL = url
+                        showShareSheet = true
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "square.and.arrow.down.fill")
+                        Text("Tải gói âm thanh đã nhận (\(NetworkManager.shared.getRecordedSizeString()))")
+                    }
+                    .font(.subheadline)
+                    .bold()
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                .disabled(recordedBytes == 0)
+
+                // =================================================
                 // TEST BEEP BUTTON
                 // =================================================
                 VStack(spacing: 6) {
@@ -174,7 +311,7 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(.bordered)
-                    .tint(.blue)
+                    .tint(.secondary)
 
                     if !testStatusMessage.isEmpty {
                         Text(testStatusMessage)
@@ -188,7 +325,7 @@ struct ContentView: View {
                 // DIAGNOSTICS & HARDWARE MONITOR
                 // =================================================
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("🔍 CHẨN ĐOÁN & TRẠNG THÁI THIẾT BỊ")
+                    Text("🔍 CHẨN ĐOÁN & TRẠNG THÁI MÁY NGHE")
                         .font(.caption)
                         .bold()
                         .foregroundColor(.secondary)
@@ -301,6 +438,11 @@ struct ContentView: View {
             }
             .padding(.horizontal)
         }
+        .sheet(isPresented: $showShareSheet) {
+            if let url = shareURL {
+                ShareSheet(items: [url])
+            }
+        }
         .onAppear {
             loadServer()
             refreshSystemInfo()
@@ -322,6 +464,11 @@ struct ContentView: View {
             iphoneConnected = notif.userInfo?["connected"] as? Bool ?? false
             if !iphoneConnected { isListening = false }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .telemetryUpdated)) { notif in
+            if let newTelemetry = notif.userInfo?["telemetry"] as? RemoteDeviceTelemetry {
+                telemetry = newTelemetry
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .audioMetricsUpdated)) { notif in
             if let level = notif.userInfo?["level"] as? Float {
                 audioLevel = level
@@ -329,6 +476,9 @@ struct ContentView: View {
             if let bytes = notif.userInfo?["bytes"] as? Int {
                 packetCount += 1
                 totalBytes += bytes
+            }
+            if let totalRec = notif.userInfo?["totalRecordedBytes"] as? Int {
+                recordedBytes = totalRec
             }
         }
     }
@@ -380,3 +530,4 @@ struct ContentView: View {
         isListening = false
     }
 }
+
