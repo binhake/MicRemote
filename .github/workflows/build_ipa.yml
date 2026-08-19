@@ -3,9 +3,18 @@ name: Build and Export IPAs
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'MicRemote/**'
+      - 'MicListener/**'
+      - '.github/workflows/build_ipa.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'MicRemote/**'
+      - 'MicListener/**'
+      - '.github/workflows/build_ipa.yml'
   workflow_dispatch:
+
 
 jobs:
   build-ipas:
