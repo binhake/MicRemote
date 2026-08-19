@@ -598,10 +598,11 @@ final class NetworkManager: NSObject {
 
         // fmt subchunk
         wavData.append(contentsOf: [0x66, 0x6d, 0x74, 0x20]) // "fmt "
-        var subchunk1Size: UInt32 = 16.littleEndian
+        var subchunk1Size = UInt32(16).littleEndian
         wavData.append(Data(bytes: &subchunk1Size, count: 4))
-        var audioFormat: UInt16 = 1.littleEndian // PCM
+        var audioFormat = UInt16(1).littleEndian // PCM
         wavData.append(Data(bytes: &audioFormat, count: 2))
+
         var channelsLE = numChannels.littleEndian
         wavData.append(Data(bytes: &channelsLE, count: 2))
         var sampleRateLE = sampleRate.littleEndian
