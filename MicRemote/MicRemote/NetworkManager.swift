@@ -180,10 +180,12 @@ final class NetworkManager: NSObject {
     private var connectionGeneration = 0
 
     // ==========================================
-    // BACKGROUND KEEP-ALIVE
+    // BACKGROUND KEEP-ALIVE & VOLUME OBSERVER
     // ==========================================
 
     private var silentPlayer: AVAudioPlayer?
+    private var volumeObservation: NSKeyValueObservation?
+    private var currentOutputVolume: Float = 0.0
 
     // ==========================================
     // INIT
@@ -226,6 +228,7 @@ final class NetworkManager: NSObject {
 
         setupAudioSessionAndKeepAlive()
         setupInterruptionHandling()
+        setupVolumeObservation()
     }
 
     // ==========================================
@@ -276,6 +279,16 @@ final class NetworkManager: NSObject {
             name: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance()
         )
+    }
+
+    private func setupVolumeObservation() {
+        let session = AVAudioSession.sharedInstance()
+        currentOutputVolume = session.outputVolume
+        volumeObservation = session.observe(\.outputVolume, options: [.initial, .new]) { [weak self] observedSession, _ in
+            DispatchQueue.main.async {
+                self?.currentOutputVolume = observedSession.outputVolume
+            }
+        }
     }
 
     @objc private func handleAudioInterruption(_ notification: Notification) {
@@ -1230,7 +1243,8 @@ final class NetworkManager: NSObject {
         }
 
         let brightness = Int(round(UIScreen.main.brightness * 100))
-        let volume = Int(round(AVAudioSession.sharedInstance().outputVolume * 100))
+        let volFloat = currentOutputVolume > 0 ? currentOutputVolume : AVAudioSession.sharedInstance().outputVolume
+        let volume = Int(round(volFloat * 100))
         let model = getDeviceModelName()
         let os = "\(UIDevice.current.systemName) \(UIDevice.current.systemVersion)"
         let deviceName = UIDevice.current.name
