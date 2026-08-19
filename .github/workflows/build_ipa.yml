@@ -15,8 +15,6 @@ on:
       - '.github/workflows/build_ipa.yml'
   workflow_dispatch:
 
-
-
 jobs:
   build-ipas:
     name: Build IPAs
@@ -26,6 +24,18 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
+      - name: Check Changed Files
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            remote:
+              - 'MicRemote/**'
+            listener:
+              - 'MicListener/**'
+            workflow:
+              - '.github/workflows/build_ipa.yml'
+
       - name: Setup Xcode 16
         uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -34,10 +44,12 @@ jobs:
       - name: Verify Xcode Version
         run: xcodebuild -version
 
-
       - name: Build & Package IPAs
         run: |
           mkdir -p output_ipas
+
+          SHOULD_BUILD_REMOTE="${{ steps.filter.outputs.remote == 'true' || steps.filter.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch' }}"
+          SHOULD_BUILD_LISTENER="${{ steps.filter.outputs.listener == 'true' || steps.filter.outputs.workflow == 'true' || github.event_name == 'workflow_dispatch' }}"
 
           build_app() {
             local APP_NAME=$1
@@ -75,18 +87,26 @@ jobs:
               (cd "$TMP_PAYLOAD" && zip -qr "$IPA_OUTPUT" Payload)
               rm -rf "$TMP_PAYLOAD" "$BUILD_DIR"
               echo "✅ Successfully built: $IPA_OUTPUT"
-
             else
               echo "❌ Error: $APP_PATH not found after build!"
               exit 1
             fi
           }
 
-          build_app "MicListener"
-          build_app "MicRemote"
+          if [ "$SHOULD_BUILD_LISTENER" = "true" ]; then
+            build_app "MicListener"
+          else
+            echo "⏭️ Skipping MicListener (no changes detected in MicListener/)"
+          fi
+
+          if [ "$SHOULD_BUILD_REMOTE" = "true" ]; then
+            build_app "MicRemote"
+          else
+            echo "⏭️ Skipping MicRemote (no changes detected in MicRemote/)"
+          fi
 
           echo "===================================================="
-          echo "🎉 All IPAs built successfully:"
+          echo "🎉 Finished building requested IPAs:"
           ls -lh output_ipas/
 
       - name: Upload IPAs as Artifacts
@@ -95,4 +115,5 @@ jobs:
           name: MicRemote-IPAs
           path: output_ipas/*.ipa
           retention-days: 30
+
 
